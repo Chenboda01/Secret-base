@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secret Base</title>
+
+  <!-- ════════════════════════════════════════
+       Importmap — pins TipTap + ProseMirror
+       jsDelivr +esm avoids `instanceof` dedup issues
+       ════════════════════════════════════════ -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@tiptap/core":            "https://cdn.jsdelivr.net/npm/@tiptap/core@3.22.5/+esm",
+      "@tiptap/starter-kit":     "https://cdn.jsdelivr.net/npm/@tiptap/starter-kit@3.22.5/+esm",
+      "@tiptap/extension-text-style": "https://cdn.jsdelivr.net/npm/@tiptap/extension-text-style@3.22.5/+esm",
+      "@tiptap/pm":             "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm",
+      "@tiptap/pm/model":       "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/model",
+      "@tiptap/pm/state":       "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/state",
+      "@tiptap/pm/view":        "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/view",
+      "@tiptap/pm/schema-list": "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/schema-list",
+      "@tiptap/pm/commands":    "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/commands",
+      "@tiptap/pm/keymap":      "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/keymap",
+      "@tiptap/pm/history":     "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/history",
+      "@tiptap/pm/transform":   "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/transform",
+      "@tiptap/pm/tables":      "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/tables",
+      "@tiptap/pm/collab":      "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/collab",
+      "@tiptap/pm/inputrules":  "https://cdn.jsdelivr.net/npm/@tiptap/pm@3.22.5/+esm/inputrules"
+    }
+  }
+  </script>
+
+  <!-- Puter.js AI Assistant (global `puter` object) -->
+  <script src="https://js.puter.com/v2/"></script>
+
+  <!-- html2pdf.js for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <!-- Theme -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- ═══ App Shell ═════════════════════════════ -->
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <h1 class="logo">◈ Secret Base</h1>
+        <button id="newDocBtn" class="btn-primary" title="New document">＋ New</button>
+      </div>
+      <nav id="docList" class="doc-list">
+        <!-- Populated by app.js -->
+        <p class="empty-state">No documents yet.<br />Create one to get started.</p>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="storageInfo">local</span>
+      </div>
+    </aside>
+
+    <!-- Main area -->
+    <main id="main">
+      <!-- App Bar -->
+      <header id="appBar">
+        <div class="app-bar-left">
+          <button id="menuToggle" class="btn-icon" title="Toggle sidebar">☰</button>
+          <input id="docTitle" class="doc-title-input" type="text" placeholder="Untitled Document" />
+        </div>
+        <div class="app-bar-right">
+          <button id="shareBtn" class="btn-header" title="Share document">🔗 Share</button>
+          <button id="aiBtn" class="btn-header btn-ai" title="AI Writing Assistant">✨ AI</button>
+          <button id="pdfBtn" class="btn-header" title="Export PDF">📄 PDF</button>
+        </div>
+      </header>
+
+      <!-- Editor area -->
+      <div id="editorArea">
+        <!-- Toolbar -->
+        <div id="toolbar" class="toolbar">
+          <div class="toolbar-group">
+            <button data-cmd="undo" class="toolbar-btn" title="Undo (Ctrl+Z)">↩</button>
+            <button data-cmd="redo" class="toolbar-btn" title="Redo (Ctrl+Shift+Z)">↪</button>
+          </div>
+          <div class="toolbar-group">
+            <button data-cmd="bold" class="toolbar-btn" title="Bold (Ctrl+B)"><strong>B</strong></button>
+            <button data-cmd="italic" class="toolbar-btn" title="Italic (Ctrl+I)"><em>I</em></button>
+            <button data-cmd="underline" class="toolbar-btn" title="Underline (Ctrl+U)"><u>U</u></button>
+            <button data-cmd="strike" class="toolbar-btn" title="Strikethrough"><s>S</s></button>
+            <button data-cmd="code" class="toolbar-btn" title="Code">⟨⟩</button>
+          </div>
+          <div class="toolbar-group">
+            <select id="headingSelect" class="toolbar-select" title="Heading level">
+              <option value="paragraph">Paragraph</option>
+              <option value="h1">Heading 1</option>
+              <option value="h2">Heading 2</option>
+              <option value="h3">Heading 3</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <select id="fontFamilySelect" class="toolbar-select" title="Font family">
+              <option value="">Font</option>
+              <option value="serif">Serif</option>
+              <option value="sans-serif">Sans-serif</option>
+              <option value="monospace">Monospace</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="'Courier New', monospace">Courier New</option>
+            </select>
+            <select id="fontSizeSelect" class="toolbar-select" title="Font size">
+              <option value="">Size</option>
+              <option value="12px">12</option>
+              <option value="14px">14</option>
+              <option value="16px">16</option>
+              <option value="18px">18</option>
+              <option value="20px">20</option>
+              <option value="24px">24</option>
+              <option value="28px">28</option>
+              <option value="36px">36</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <button data-cmd="bulletList" class="toolbar-btn" title="Bullet list">• List</button>
+            <button data-cmd="orderedList" class="toolbar-btn" title="Ordered list">1. List</button>
+            <button data-cmd="blockquote" class="toolbar-btn" title="Blockquote">❝ Quote</button>
+          </div>
+        </div>
+
+        <!-- The TipTap editor mounts here -->
+        <div id="editor"></div>
+
+        <!-- Status bar -->
+        <div id="statusBar">
+          <span id="statusText">Ready</span>
+          <span id="wordCount"></span>
+        </div>
+      </div>
+
+      <!-- Share modal (hidden by default) -->
+      <div id="shareModal" class="modal-overlay hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>Share Document</h2>
+            <button id="closeShareModal" class="btn-icon">✕</button>
+          </div>
+          <div class="modal-body">
+            <label>Share link</label>
+            <div class="copy-row">
+              <input id="shareLinkInput" type="text" readonly />
+              <button id="copyLinkBtn" class="btn-primary">Copy</button>
+            </div>
+            <label class="toggle-row">
+              <span>Public document (anyone with link can view)</span>
+              <input type="checkbox" id="publicToggle" />
+              <span class="toggle-switch"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI modal (hidden by default) -->
+      <div id="aiModal" class="modal-overlay hidden">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h2>✨ AI Writing Assistant</h2>
+            <button id="closeAiModal" class="btn-icon">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="modal-hint">Select text or type a prompt below, and AI will expand on it.</p>
+            <textarea id="aiPrompt" placeholder="Describe what you want to write..." rows="4"></textarea>
+            <div class="modal-actions">
+              <button id="aiExpandBtn" class="btn-primary">Generate ✨</button>
+            </div>
+            <div id="aiResult" class="ai-result hidden">
+              <div id="aiOutput"></div>
+              <button id="aiInsertBtn" class="btn-secondary">Insert into document</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══ Application Entry Point ═══════════════ -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
