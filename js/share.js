@@ -23,7 +23,7 @@ export function setupShare() {
     const doc = storage.getDoc(docId);
     if (!doc) return;
 
-    const base = window.location.origin + '/secret_base/';
+    const base = window.location.origin + window.location.pathname;
     const url = base + '#/doc/' + docId;
     shareLinkInput.value = url;
 
