@@ -178,7 +178,6 @@ function showLanding() {
   $('#landingNewBtn').addEventListener('click', () => {
     createNewDocument();
   });
-  $('#statusBar').style.display = 'none';
 }
 
 function showEditor() {
