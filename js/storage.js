@@ -11,68 +11,34 @@ let cache = {
 let ready = false;
 let initPromise = null;
 
-const KV_TIMEOUT = 4000;
+const KV_TIMEOUT = 3000;
 
-async function cloudGet(key) {
-  if (typeof puter !== 'undefined' && puter.kv) {
-    try {
-      const result = await Promise.race([
-        puter.kv.get(key),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-      ]);
-      return result;
-    } catch (e) {
-      console.warn('Puter KV read failed, falling back to localStorage:', e.message);
-    }
-  }
+async function cloudTry(fn) {
+  if (typeof puter === 'undefined' || !puter.kv) return;
   try {
-    return JSON.parse(localStorage.getItem(key));
-  } catch {
-    return null;
+    await Promise.race([
+      fn(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+    ]);
+  } catch (e) {
+    // silently ignore — localStorage is the primary store
+    if (e.message !== 'timeout') console.debug('Puter KV:', e.message);
   }
-}
-
-async function cloudSet(key, value) {
-  if (typeof puter !== 'undefined' && puter.kv) {
-    try {
-      await Promise.race([
-        puter.kv.set(key, value),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-      ]);
-    } catch (e) {
-      console.warn('Puter KV write failed, falling back to localStorage:', e.message);
-    }
-  }
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-async function cloudDelete(key) {
-  if (typeof puter !== 'undefined' && puter.kv) {
-    try {
-      await Promise.race([
-        puter.kv.delete(key),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-      ]);
-    } catch (e) {
-      console.warn('Puter KV delete failed, falling back to localStorage:', e.message);
-    }
-  }
-  localStorage.removeItem(key);
 }
 
 async function init() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    cache.index = (await cloudGet(DOCS_INDEX_KEY)) || [];
-    cache.currentDocId = (await cloudGet(CURRENT_DOC_KEY)) || null;
+    cache.index = JSON.parse(localStorage.getItem(DOCS_INDEX_KEY)) || [];
+    cache.currentDocId = localStorage.getItem(CURRENT_DOC_KEY) || null;
 
-    const contentPromises = cache.index.map(doc =>
-      cloudGet(PREFIX + 'content_' + doc.id).then(content => {
-        if (content) cache.contents[doc.id] = content;
-      })
-    );
-    await Promise.allSettled(contentPromises);
+    cache.index.forEach(doc => {
+      const raw = localStorage.getItem(PREFIX + 'content_' + doc.id);
+      if (raw) {
+        try { cache.contents[doc.id] = JSON.parse(raw); } catch {}
+      }
+    });
 
     ready = true;
   })();
@@ -81,20 +47,24 @@ async function init() {
 }
 
 async function persistIndex() {
-  await cloudSet(DOCS_INDEX_KEY, cache.index);
+  localStorage.setItem(DOCS_INDEX_KEY, JSON.stringify(cache.index));
+  await cloudTry(() => puter.kv.set(DOCS_INDEX_KEY, cache.index));
 }
 
 async function persistContent(docId) {
-  if (docId in cache.contents) {
-    await cloudSet(PREFIX + 'content_' + docId, cache.contents[docId]);
-  }
+  if (!(docId in cache.contents)) return;
+  const key = PREFIX + 'content_' + docId;
+  localStorage.setItem(key, JSON.stringify(cache.contents[docId]));
+  await cloudTry(() => puter.kv.set(key, cache.contents[docId]));
 }
 
 async function persistCurrentDoc() {
   if (cache.currentDocId) {
-    await cloudSet(CURRENT_DOC_KEY, cache.currentDocId);
+    localStorage.setItem(CURRENT_DOC_KEY, cache.currentDocId);
+    await cloudTry(() => puter.kv.set(CURRENT_DOC_KEY, cache.currentDocId));
   } else {
-    await cloudDelete(CURRENT_DOC_KEY);
+    localStorage.removeItem(CURRENT_DOC_KEY);
+    await cloudTry(() => puter.kv.delete(CURRENT_DOC_KEY));
   }
 }
 
@@ -162,7 +132,8 @@ export const storage = {
     cache.index = cache.index.filter(d => d.id !== id);
     delete cache.contents[id];
     await persistIndex();
-    await cloudDelete(PREFIX + 'content_' + id);
+    localStorage.removeItem(PREFIX + 'content_' + id);
+    await cloudTry(() => puter.kv.delete(PREFIX + 'content_' + id));
   },
 
   async saveContent(id, content) {
