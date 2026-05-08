@@ -1,8 +1,100 @@
-const STORAGE_PREFIX = 'secret_base_';
-const DOCS_INDEX_KEY = STORAGE_PREFIX + 'docs_index';
-const CURRENT_DOC_KEY = STORAGE_PREFIX + 'current_doc';
+const PREFIX = 'secret_base:';
+const DOCS_INDEX_KEY = PREFIX + 'docs_index';
+const CURRENT_DOC_KEY = PREFIX + 'current_doc';
+
+let cache = {
+  index: [],
+  contents: {},
+  currentDocId: null,
+};
+
+let ready = false;
+let initPromise = null;
+
+async function cloudGet(key) {
+  if (typeof puter !== 'undefined' && puter.kv) {
+    try {
+      return await puter.kv.get(key);
+    } catch (e) {
+      console.warn('Puter KV read failed, falling back to localStorage:', e.message);
+    }
+  }
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+async function cloudSet(key, value) {
+  if (typeof puter !== 'undefined' && puter.kv) {
+    try {
+      await puter.kv.set(key, value);
+    } catch (e) {
+      console.warn('Puter KV write failed, falling back to localStorage:', e.message);
+    }
+  }
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+async function cloudDelete(key) {
+  if (typeof puter !== 'undefined' && puter.kv) {
+    try {
+      await puter.kv.delete(key);
+    } catch (e) {
+      console.warn('Puter KV delete failed, falling back to localStorage:', e.message);
+    }
+  }
+  localStorage.removeItem(key);
+}
+
+async function init() {
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    cache.index = (await cloudGet(DOCS_INDEX_KEY)) || [];
+    cache.currentDocId = (await cloudGet(CURRENT_DOC_KEY)) || null;
+
+    const contentPromises = cache.index.map(doc =>
+      cloudGet(PREFIX + 'content_' + doc.id).then(content => {
+        if (content) cache.contents[doc.id] = content;
+      })
+    );
+    await Promise.allSettled(contentPromises);
+
+    ready = true;
+  })();
+
+  return initPromise;
+}
+
+async function persistIndex() {
+  await cloudSet(DOCS_INDEX_KEY, cache.index);
+}
+
+async function persistContent(docId) {
+  if (docId in cache.contents) {
+    await cloudSet(PREFIX + 'content_' + docId, cache.contents[docId]);
+  }
+}
+
+async function persistCurrentDoc() {
+  if (cache.currentDocId) {
+    await cloudSet(CURRENT_DOC_KEY, cache.currentDocId);
+  } else {
+    await cloudDelete(CURRENT_DOC_KEY);
+  }
+}
+
+function ensureReady() {
+  if (!ready) throw new Error('Storage not initialized. Call storage.init() first.');
+}
 
 export const storage = {
+  async init() {
+    return init();
+  },
+
   generateId() {
     const chars = 'abcdefghijklmnopqrstuvwxyz';
     let result = '';
@@ -12,25 +104,13 @@ export const storage = {
     return result;
   },
 
-  getIndex() {
-    try {
-      const raw = localStorage.getItem(DOCS_INDEX_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  },
-
-  saveIndex(index) {
-    localStorage.setItem(DOCS_INDEX_KEY, JSON.stringify(index));
-  },
-
   listDocs() {
-    const index = this.getIndex();
-    return index.sort((a, b) => b.updatedAt - a.updatedAt);
+    ensureReady();
+    return [...cache.index].sort((a, b) => b.updatedAt - a.updatedAt);
   },
 
-  createDoc(title, content = null) {
+  async createDoc(title, content) {
+    ensureReady();
     const id = this.generateId();
     const doc = {
       id,
@@ -39,65 +119,57 @@ export const storage = {
       updatedAt: Date.now(),
       isPublic: false,
     };
-    const index = this.getIndex();
-    index.push({ id: doc.id, title: doc.title, updatedAt: doc.updatedAt, isPublic: false });
-    this.saveIndex(index);
+    cache.index.push({ ...doc });
+
     if (content) {
-      this.saveContent(id, content);
+      cache.contents[id] = content;
+      await persistContent(id);
     }
+
+    await persistIndex();
     return doc;
   },
 
   getDoc(id) {
-    const index = this.getIndex();
-    const entry = index.find(d => d.id === id);
+    ensureReady();
+    const entry = cache.index.find(d => d.id === id);
     if (!entry) return null;
     return { ...entry };
   },
 
-  saveDoc(id, updates) {
-    const index = this.getIndex();
-    const entry = index.find(d => d.id === id);
+  async saveDoc(id, updates) {
+    ensureReady();
+    const entry = cache.index.find(d => d.id === id);
     if (!entry) return;
     Object.assign(entry, updates, { updatedAt: Date.now() });
-    this.saveIndex(index);
+    await persistIndex();
   },
 
-  deleteDoc(id) {
-    let index = this.getIndex();
-    index = index.filter(d => d.id !== id);
-    this.saveIndex(index);
-    localStorage.removeItem(STORAGE_PREFIX + 'content_' + id);
+  async deleteDoc(id) {
+    ensureReady();
+    cache.index = cache.index.filter(d => d.id !== id);
+    delete cache.contents[id];
+    await persistIndex();
+    await cloudDelete(PREFIX + 'content_' + id);
   },
 
-  saveContent(id, content) {
-    try {
-      localStorage.setItem(STORAGE_PREFIX + 'content_' + id, JSON.stringify(content));
-    } catch (e) {
-      if (e.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded. Content not saved.');
-      }
-    }
+  async saveContent(id, content) {
+    ensureReady();
+    cache.contents[id] = content;
+    await persistContent(id);
   },
 
   loadContent(id) {
-    try {
-      const raw = localStorage.getItem(STORAGE_PREFIX + 'content_' + id);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    ensureReady();
+    return cache.contents[id] ? cache.contents[id] : null;
   },
 
-  setCurrentDocId(id) {
-    if (id) {
-      localStorage.setItem(CURRENT_DOC_KEY, id);
-    } else {
-      localStorage.removeItem(CURRENT_DOC_KEY);
-    }
+  async setCurrentDocId(id) {
+    cache.currentDocId = id || null;
+    await persistCurrentDoc();
   },
 
   getCurrentDocId() {
-    return localStorage.getItem(CURRENT_DOC_KEY);
+    return cache.currentDocId;
   },
 };

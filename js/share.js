@@ -52,6 +52,6 @@ export function setupShare() {
   publicToggle.addEventListener('change', () => {
     const docId = storage.getCurrentDocId();
     if (!docId) return;
-    storage.saveDoc(docId, { isPublic: publicToggle.checked });
+    storage.saveDoc(docId, { isPublic: publicToggle.checked }).catch(() => {});
   });
 }

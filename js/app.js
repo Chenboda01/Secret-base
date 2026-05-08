@@ -6,7 +6,6 @@ import { setupShare } from './share.js';
 
 let currentDocId = null;
 let pendingAutoSave = null;
-let editorWired = false;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -36,15 +35,15 @@ function getDefaultContent(title) {
   };
 }
 
-function openDocument(docId) {
+async function openDocument(docId) {
   const doc = storage.getDoc(docId);
   if (!doc) {
-    createNewDocument();
+    await createNewDocument();
     return;
   }
 
   currentDocId = docId;
-  storage.setCurrentDocId(docId);
+  await storage.setCurrentDocId(docId);
   $('#docTitle').value = doc.title || '';
   updateWordCount();
 
@@ -58,49 +57,48 @@ function openDocument(docId) {
   highlightDoc(docId);
 }
 
-function createNewDocument() {
+async function createNewDocument() {
   const title = 'Untitled Document';
-  const doc = storage.createDoc(title);
+  const doc = await storage.createDoc(title);
   currentDocId = doc.id;
-  storage.setCurrentDocId(doc.id);
+  await storage.setCurrentDocId(doc.id);
   $('#docTitle').value = title;
   navigateToDoc(doc.id);
-  // setContent handled by hashchange → openDocument
   renderDocList();
   highlightDoc(doc.id);
 }
 
-function saveCurrentDocument() {
+async function saveCurrentDocument() {
   if (!currentDocId) return;
   const title = $('#docTitle').value.trim() || 'Untitled Document';
   const content = getJSON();
   if (!content) return;
 
-  storage.saveDoc(currentDocId, { title });
-  storage.saveContent(currentDocId, content);
+  await storage.saveDoc(currentDocId, { title });
+  await storage.saveContent(currentDocId, content);
   renderDocList();
   setStatus('Saved');
 }
 
-function saveCurrentDocumentNow() {
+async function saveCurrentDocumentNow() {
   if (pendingAutoSave) {
     clearTimeout(pendingAutoSave);
     pendingAutoSave = null;
   }
-  saveCurrentDocument();
+  await saveCurrentDocument();
 }
 
 function scheduleAutoSave() {
   if (pendingAutoSave) clearTimeout(pendingAutoSave);
-  pendingAutoSave = setTimeout(saveCurrentDocument, 1500);
+  pendingAutoSave = setTimeout(() => saveCurrentDocument(), 1500);
 }
 
-function deleteDocument(docId) {
+async function deleteDocument(docId) {
   if (!confirm('Delete this document? This cannot be undone.')) return;
-  storage.deleteDoc(docId);
+  await storage.deleteDoc(docId);
   if (currentDocId === docId) {
     currentDocId = null;
-    storage.setCurrentDocId(null);
+    await storage.setCurrentDocId(null);
     const docs = storage.listDocs();
     if (docs.length > 0) {
       navigateToDoc(docs[0].id);
@@ -270,7 +268,7 @@ function escHtml(str) {
 
 /* ── Route Handler ─────────────────────── */
 
-function handleRoute() {
+async function handleRoute() {
   const route = getRoute();
   if (route.route === 'doc') {
     if (!editor) {
@@ -290,12 +288,12 @@ function handleRoute() {
         onSelectionUpdate: () => { updateToolbarState(); },
       });
     }
-    openDocument(route.docId);
+    await openDocument(route.docId);
   } else {
-    saveCurrentDocumentNow();
+    await saveCurrentDocumentNow();
     destroyEditor();
     currentDocId = null;
-    storage.setCurrentDocId(null);
+    await storage.setCurrentDocId(null);
     showLanding();
     renderDocList();
   }
@@ -303,7 +301,9 @@ function handleRoute() {
 
 /* ── Boot ───────────────────────────────── */
 
-function boot() {
+async function boot() {
+  await storage.init();
+
   /* Event wiring */
   $('#newDocBtn').addEventListener('click', () => {
     saveCurrentDocumentNow();
@@ -343,7 +343,7 @@ function boot() {
   /* Initial load */
   const route = getRoute();
   if (route.route === 'doc') {
-    handleRoute();
+    await handleRoute();
   } else {
     showLanding();
   }
