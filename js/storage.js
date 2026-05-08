@@ -11,10 +11,16 @@ let cache = {
 let ready = false;
 let initPromise = null;
 
+const KV_TIMEOUT = 4000;
+
 async function cloudGet(key) {
   if (typeof puter !== 'undefined' && puter.kv) {
     try {
-      return await puter.kv.get(key);
+      const result = await Promise.race([
+        puter.kv.get(key),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+      ]);
+      return result;
     } catch (e) {
       console.warn('Puter KV read failed, falling back to localStorage:', e.message);
     }
@@ -29,7 +35,10 @@ async function cloudGet(key) {
 async function cloudSet(key, value) {
   if (typeof puter !== 'undefined' && puter.kv) {
     try {
-      await puter.kv.set(key, value);
+      await Promise.race([
+        puter.kv.set(key, value),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+      ]);
     } catch (e) {
       console.warn('Puter KV write failed, falling back to localStorage:', e.message);
     }
@@ -40,7 +49,10 @@ async function cloudSet(key, value) {
 async function cloudDelete(key) {
   if (typeof puter !== 'undefined' && puter.kv) {
     try {
-      await puter.kv.delete(key);
+      await Promise.race([
+        puter.kv.delete(key),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+      ]);
     } catch (e) {
       console.warn('Puter KV delete failed, falling back to localStorage:', e.message);
     }

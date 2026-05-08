@@ -1,4 +1,4 @@
-import { storage } from './storage.js';
+import { storage } from './storage.js?v=5';
 import { initEditor, destroyEditor, getJSON, setContent, clearEditor, editor } from './editor.js';
 import { setupAI } from './ai.js';
 import { setupPDF } from './pdf.js';
