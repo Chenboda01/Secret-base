@@ -13,7 +13,14 @@ let initPromise = null;
 
 const KV_TIMEOUT = 3000;
 
+const PUTER_CONNECTED_KEY = PREFIX + 'puter_connected';
+
+function isPuterConnected() {
+  return localStorage.getItem(PUTER_CONNECTED_KEY) === '1';
+}
+
 async function cloudTry(fn) {
+  if (!isPuterConnected()) return;
   if (typeof puter === 'undefined' || !puter.kv) return;
   try {
     await Promise.race([
