@@ -345,12 +345,7 @@ function boot() {
   if (route.route === 'doc') {
     handleRoute();
   } else {
-    const lastDocId = storage.getCurrentDocId();
-    if (lastDocId && storage.getDoc(lastDocId)) {
-      navigateToDoc(lastDocId);
-    } else {
-      showLanding();
-    }
+    showLanding();
   }
 
   renderDocList();
