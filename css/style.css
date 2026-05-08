@@ -815,6 +815,44 @@ input, textarea, select, button {
   background: var(--text-muted);
 }
 
+/* ═══ Landing View ══════════════════════════ */
+
+.landing {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+
+.landing-content {
+  text-align: center;
+  max-width: 400px;
+  padding: 48px 24px;
+}
+
+.landing-icon {
+  font-size: 48px;
+  color: var(--accent);
+  margin-bottom: 20px;
+  text-shadow: 0 0 40px var(--accent-glow);
+}
+
+.landing-content h2 {
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.landing-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 28px;
+}
+
 /* ═══ Responsive ═══════════════════════════ */
 
 @media (max-width: 768px) {

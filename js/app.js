@@ -6,6 +6,7 @@ import { setupShare } from './share.js';
 
 let currentDocId = null;
 let pendingAutoSave = null;
+let editorWired = false;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -58,15 +59,13 @@ function openDocument(docId) {
 }
 
 function createNewDocument() {
-  destroyEditor();
-
   const title = 'Untitled Document';
   const doc = storage.createDoc(title);
   currentDocId = doc.id;
   storage.setCurrentDocId(doc.id);
   $('#docTitle').value = title;
   navigateToDoc(doc.id);
-  setContent(getDefaultContent(title));
+  // setContent handled by hashchange → openDocument
   renderDocList();
   highlightDoc(doc.id);
 }
@@ -106,7 +105,8 @@ function deleteDocument(docId) {
     if (docs.length > 0) {
       navigateToDoc(docs[0].id);
     } else {
-      createNewDocument();
+      destroyEditor();
+      showLanding();
     }
   } else {
     renderDocList();
@@ -142,7 +142,6 @@ function renderDocList() {
       const id = el.dataset.id;
       if (id !== currentDocId) {
         saveCurrentDocumentNow();
-        destroyEditor();
         navigateToDoc(id);
       }
     });
@@ -162,15 +161,94 @@ function highlightDoc(docId) {
   if (active) active.classList.add('active');
 }
 
+/* ── Landing View ──────────────────────── */
+
+function showLanding() {
+  const area = $('#editorArea');
+  area.innerHTML = `
+    <div class="landing">
+      <div class="landing-content">
+        <div class="landing-icon">◈</div>
+        <h2>Welcome to Secret Base</h2>
+        <p>Create a new document to get started, or select one from the sidebar.</p>
+        <button id="landingNewBtn" class="btn-primary">＋ New Document</button>
+      </div>
+    </div>
+  `;
+  $('#landingNewBtn').addEventListener('click', () => {
+    createNewDocument();
+  });
+  $('#statusBar').style.display = 'none';
+}
+
+function showEditor() {
+  const area = $('#editorArea');
+  area.innerHTML = `
+    <div id="toolbar" class="toolbar">
+      <div class="toolbar-group">
+        <button data-cmd="undo" class="toolbar-btn" title="Undo (Ctrl+Z)">↩</button>
+        <button data-cmd="redo" class="toolbar-btn" title="Redo (Ctrl+Shift+Z)">↪</button>
+      </div>
+      <div class="toolbar-group">
+        <button data-cmd="bold" class="toolbar-btn" title="Bold (Ctrl+B)"><strong>B</strong></button>
+        <button data-cmd="italic" class="toolbar-btn" title="Italic (Ctrl+I)"><em>I</em></button>
+        <button data-cmd="underline" class="toolbar-btn" title="Underline (Ctrl+U)"><u>U</u></button>
+        <button data-cmd="strike" class="toolbar-btn" title="Strikethrough"><s>S</s></button>
+        <button data-cmd="code" class="toolbar-btn" title="Code">⟨⟩</button>
+      </div>
+      <div class="toolbar-group">
+        <select id="headingSelect" class="toolbar-select" title="Heading level">
+          <option value="paragraph">Paragraph</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+        </select>
+      </div>
+      <div class="toolbar-group">
+        <select id="fontFamilySelect" class="toolbar-select" title="Font family">
+          <option value="">Font</option>
+          <option value="serif">Serif</option>
+          <option value="sans-serif">Sans-serif</option>
+          <option value="monospace">Monospace</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Courier New', monospace">Courier New</option>
+        </select>
+        <select id="fontSizeSelect" class="toolbar-select" title="Font size">
+          <option value="">Size</option>
+          <option value="12px">12</option>
+          <option value="14px">14</option>
+          <option value="16px">16</option>
+          <option value="18px">18</option>
+          <option value="20px">20</option>
+          <option value="24px">24</option>
+          <option value="28px">28</option>
+          <option value="36px">36</option>
+        </select>
+      </div>
+      <div class="toolbar-group">
+        <button data-cmd="bulletList" class="toolbar-btn" title="Bullet list">• List</button>
+        <button data-cmd="orderedList" class="toolbar-btn" title="Ordered list">1. List</button>
+        <button data-cmd="blockquote" class="toolbar-btn" title="Blockquote">❝ Quote</button>
+      </div>
+    </div>
+    <div id="editor"></div>
+    <div id="statusBar">
+      <span id="statusText">Ready</span>
+      <span id="wordCount"></span>
+    </div>
+  `;
+  $('#statusBar').style.display = '';
+}
+
 /* ── Status Bar ────────────────────────── */
 
 function setStatus(msg) {
   const el = $('#statusText');
+  if (!el) return;
   el.textContent = msg;
   el.style.color = 'var(--accent)';
   setTimeout(() => {
-    el.textContent = 'Ready';
-    el.style.color = '';
+    if (el) { el.textContent = 'Ready'; el.style.color = ''; }
   }, 2000);
 }
 
@@ -191,25 +269,42 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+/* ── Route Handler ─────────────────────── */
+
+function handleRoute() {
+  const route = getRoute();
+  if (route.route === 'doc') {
+    if (!editor) {
+      showEditor();
+      const editorEl = $('#editor');
+      initEditor(editorEl, {
+        onUpdate: () => { scheduleAutoSave(); updateWordCount(); },
+        onSelectionUpdate: () => { updateToolbarState(); },
+      });
+      setupAI();
+      setupPDF();
+      setupShare();
+    } else {
+      destroyEditor();
+      initEditor($('#editor'), {
+        onUpdate: () => { scheduleAutoSave(); updateWordCount(); },
+        onSelectionUpdate: () => { updateToolbarState(); },
+      });
+    }
+    openDocument(route.docId);
+  } else {
+    saveCurrentDocumentNow();
+    destroyEditor();
+    currentDocId = null;
+    storage.setCurrentDocId(null);
+    showLanding();
+    renderDocList();
+  }
+}
+
 /* ── Boot ───────────────────────────────── */
 
 function boot() {
-  const editorEl = $('#editor');
-
-  initEditor(editorEl, {
-    onUpdate: () => {
-      scheduleAutoSave();
-      updateWordCount();
-    },
-    onSelectionUpdate: () => {
-      updateToolbarState();
-    },
-  });
-
-  setupAI();
-  setupPDF();
-  setupShare();
-
   /* Event wiring */
   $('#newDocBtn').addEventListener('click', () => {
     saveCurrentDocumentNow();
@@ -229,7 +324,6 @@ function boot() {
     $('#sidebar').classList.toggle('collapsed');
   });
 
-  /* Keyboard shortcuts */
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
@@ -237,40 +331,26 @@ function boot() {
     }
   });
 
-  /* Global click to close modals */
   $$('.modal-overlay').forEach(modal => {
     modal.addEventListener('click', (e) => {
       if (e.target === modal) modal.classList.add('hidden');
     });
   });
 
-  /* Hash routing */
   window.addEventListener('hashchange', () => {
-    const route = getRoute();
-    if (route.route === 'doc') {
-      saveCurrentDocumentNow();
-      destroyEditor();
-      initEditor(editorEl, {
-        onUpdate: () => { scheduleAutoSave(); updateWordCount(); },
-        onSelectionUpdate: () => { updateToolbarState(); },
-      });
-      setupAI();
-      setupPDF();
-      setupShare();
-      openDocument(route.docId);
-    }
+    handleRoute();
   });
 
   /* Initial load */
   const route = getRoute();
   if (route.route === 'doc') {
-    openDocument(route.docId);
+    handleRoute();
   } else {
     const lastDocId = storage.getCurrentDocId();
     if (lastDocId && storage.getDoc(lastDocId)) {
       navigateToDoc(lastDocId);
     } else {
-      openDocument(storage.createDoc('Untitled Document').id);
+      showLanding();
     }
   }
 
@@ -292,28 +372,32 @@ function updateToolbarState() {
   });
 
   const headingSelect = $('#headingSelect');
-  if (editor.isActive('heading')) {
-    const level = editor.getAttributes('heading').level;
-    headingSelect.value = 'h' + level;
-  } else {
-    headingSelect.value = 'paragraph';
+  if (headingSelect) {
+    if (editor.isActive('heading')) {
+      const level = editor.getAttributes('heading').level;
+      headingSelect.value = 'h' + level;
+    } else {
+      headingSelect.value = 'paragraph';
+    }
   }
 
   const fontFamily = $('#fontFamilySelect');
-  if (editor.isActive('textStyle') && editor.getAttributes('textStyle').fontFamily) {
-    fontFamily.value = editor.getAttributes('textStyle').fontFamily;
-  } else {
-    fontFamily.value = '';
+  if (fontFamily) {
+    if (editor.isActive('textStyle') && editor.getAttributes('textStyle').fontFamily) {
+      fontFamily.value = editor.getAttributes('textStyle').fontFamily;
+    } else {
+      fontFamily.value = '';
+    }
   }
 
   const fontSize = $('#fontSizeSelect');
-  if (editor.isActive('textStyle') && editor.getAttributes('textStyle').fontSize) {
-    fontSize.value = editor.getAttributes('textStyle').fontSize;
-  } else {
-    fontSize.value = '';
+  if (fontSize) {
+    if (editor.isActive('textStyle') && editor.getAttributes('textStyle').fontSize) {
+      fontSize.value = editor.getAttributes('textStyle').fontSize;
+    } else {
+      fontSize.value = '';
+    }
   }
 }
-
-/* ── Start ─────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', boot);
