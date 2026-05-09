@@ -853,6 +853,12 @@ input, textarea, select, button {
   margin-bottom: 28px;
 }
 
+/* ═══ Hide Puter auth dialog ═════════════════ */
+
+puter-dialog {
+  display: none !important;
+}
+
 /* ═══ Responsive ═══════════════════════════ */
 
 @media (max-width: 768px) {
