@@ -8,99 +8,29 @@ let cache = {
   currentDocId: null,
 };
 
-let ready = false;
-let initPromise = null;
-let kvFailed = false;
-
-const KV_TIMEOUT = 2000;
-
-async function cloudTry(fn) {
-  if (kvFailed) return;
-  if (typeof puter === 'undefined' || !puter.kv) return;
-  try {
-    await Promise.race([
-      fn(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-    ]);
-  } catch (e) {
-    if (e.message === 'timeout') kvFailed = true;
-  }
-}
-
-async function init() {
-  if (initPromise) return initPromise;
-
-  initPromise = (async () => {
-    cache.index = JSON.parse(localStorage.getItem(DOCS_INDEX_KEY)) || [];
-    cache.currentDocId = localStorage.getItem(CURRENT_DOC_KEY) || null;
-
-    cache.index.forEach(doc => {
-      const raw = localStorage.getItem(PREFIX + 'content_' + doc.id);
-      if (raw) {
-        try { cache.contents[doc.id] = JSON.parse(raw); } catch {}
-      }
-    });
-
-    ready = true;
-
-    if (typeof puter !== 'undefined' && puter.kv && !kvFailed) {
-      try {
-        const result = await Promise.race([
-          puter.kv.get(DOCS_INDEX_KEY),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-        ]);
-        if (result && Array.isArray(result)) {
-          cache.index = result;
-          cache.currentDocId = await Promise.race([
-            puter.kv.get(CURRENT_DOC_KEY),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-          ]) || cache.currentDocId;
-          for (const doc of cache.index) {
-            const content = await Promise.race([
-              puter.kv.get(PREFIX + 'content_' + doc.id),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
-            ]);
-            if (content) cache.contents[doc.id] = content;
-          }
-        }
-      } catch {
-        kvFailed = true;
-      }
+function init() {
+  cache.index = JSON.parse(localStorage.getItem(DOCS_INDEX_KEY)) || [];
+  cache.currentDocId = localStorage.getItem(CURRENT_DOC_KEY) || null;
+  cache.index.forEach(doc => {
+    const raw = localStorage.getItem(PREFIX + 'content_' + doc.id);
+    if (raw) {
+      try { cache.contents[doc.id] = JSON.parse(raw); } catch {}
     }
-  })();
-
-  return initPromise;
+  });
 }
 
-async function persistIndex() {
+function persistAll() {
   localStorage.setItem(DOCS_INDEX_KEY, JSON.stringify(cache.index));
-  await cloudTry(() => puter.kv.set(DOCS_INDEX_KEY, cache.index));
-}
-
-async function persistContent(docId) {
-  if (!(docId in cache.contents)) return;
-  const key = PREFIX + 'content_' + docId;
-  localStorage.setItem(key, JSON.stringify(cache.contents[docId]));
-  await cloudTry(() => puter.kv.set(key, cache.contents[docId]));
-}
-
-async function persistCurrentDoc() {
   if (cache.currentDocId) {
     localStorage.setItem(CURRENT_DOC_KEY, cache.currentDocId);
-    await cloudTry(() => puter.kv.set(CURRENT_DOC_KEY, cache.currentDocId));
   } else {
     localStorage.removeItem(CURRENT_DOC_KEY);
-    await cloudTry(() => puter.kv.delete(CURRENT_DOC_KEY));
   }
-}
-
-function ensureReady() {
-  if (!ready) throw new Error('Storage not initialized. Call storage.init() first.');
 }
 
 export const storage = {
-  async init() {
-    return init();
+  init() {
+    init();
   },
 
   generateId() {
@@ -113,12 +43,10 @@ export const storage = {
   },
 
   listDocs() {
-    ensureReady();
     return [...cache.index].sort((a, b) => b.updatedAt - a.updatedAt);
   },
 
-  async createDoc(title, content) {
-    ensureReady();
+  createDoc(title, content) {
     const id = this.generateId();
     const doc = {
       id,
@@ -131,51 +59,45 @@ export const storage = {
 
     if (content) {
       cache.contents[id] = content;
-      await persistContent(id);
+      localStorage.setItem(PREFIX + 'content_' + id, JSON.stringify(content));
     }
 
-    await persistIndex();
+    persistAll();
     return doc;
   },
 
   getDoc(id) {
-    ensureReady();
     const entry = cache.index.find(d => d.id === id);
     if (!entry) return null;
     return { ...entry };
   },
 
-  async saveDoc(id, updates) {
-    ensureReady();
+  saveDoc(id, updates) {
     const entry = cache.index.find(d => d.id === id);
     if (!entry) return;
     Object.assign(entry, updates, { updatedAt: Date.now() });
-    await persistIndex();
+    persistAll();
   },
 
-  async deleteDoc(id) {
-    ensureReady();
+  deleteDoc(id) {
     cache.index = cache.index.filter(d => d.id !== id);
     delete cache.contents[id];
-    await persistIndex();
+    persistAll();
     localStorage.removeItem(PREFIX + 'content_' + id);
-    await cloudTry(() => puter.kv.delete(PREFIX + 'content_' + id));
   },
 
-  async saveContent(id, content) {
-    ensureReady();
+  saveContent(id, content) {
     cache.contents[id] = content;
-    await persistContent(id);
+    localStorage.setItem(PREFIX + 'content_' + id, JSON.stringify(content));
   },
 
   loadContent(id) {
-    ensureReady();
     return cache.contents[id] ? cache.contents[id] : null;
   },
 
-  async setCurrentDocId(id) {
+  setCurrentDocId(id) {
     cache.currentDocId = id || null;
-    await persistCurrentDoc();
+    persistAll();
   },
 
   getCurrentDocId() {

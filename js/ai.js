@@ -6,6 +6,23 @@
 import { editor } from './editor.js';
 
 let dom = {};
+let puterReady = false;
+let puterLoading = null;
+
+function loadPuter() {
+  if (puterReady) return Promise.resolve();
+  if (puterLoading) return puterLoading;
+  if (typeof puter !== 'undefined') { puterReady = true; return Promise.resolve(); }
+
+  puterLoading = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://js.puter.com/v2/';
+    script.onload = () => { puterReady = true; resolve(); };
+    script.onerror = () => { puterLoading = null; reject(new Error('Failed to load Puter.js')); };
+    document.head.appendChild(script);
+  });
+  return puterLoading;
+}
 
 function cacheDom() {
   dom = {
@@ -45,7 +62,8 @@ async function handleGenerate() {
   dom.aiExpandBtn.textContent = 'Generating…';
 
   try {
-    // Check that Puter.js is loaded
+    await loadPuter();
+
     if (typeof puter === 'undefined' || !puter.ai) {
       throw new Error('Puter.js is not available. Check your internet connection.');
     }

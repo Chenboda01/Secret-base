@@ -29,14 +29,12 @@
   }
   </script>
 
-  <!-- Puter.js AI Assistant (global `puter` object) -->
-  <script src="https://js.puter.com/v2/"></script>
-
+  <!-- Puter.js loaded lazily when AI feature is used -->
   <!-- html2pdf.js for PDF export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <!-- Theme -->
-  <link rel="stylesheet" href="css/style.css?v=6" />
+  <link rel="stylesheet" href="css/style.css?v=7" />
 </head>
 <body>
   <!-- ═══ App Shell ═════════════════════════════ -->
@@ -52,7 +50,7 @@
         <p class="empty-state">No documents yet.<br />Create one to get started.</p>
       </nav>
       <div class="sidebar-footer">
-        <span id="storageInfo">☁️ cloud</span>
+        <span id="storageInfo">local</span>
       </div>
     </aside>
 
@@ -178,6 +176,6 @@
   </div>
 
   <!-- ═══ Application Entry Point ═══════════════ -->
-  <script type="module" src="js/app.js?v=9"></script>
+  <script type="module" src="js/app.js?v=10"></script>
 </body>
 </html>
