@@ -10,17 +10,12 @@ let cache = {
 
 let ready = false;
 let initPromise = null;
+let kvFailed = false;
 
-const KV_TIMEOUT = 3000;
-
-const PUTER_CONNECTED_KEY = PREFIX + 'puter_connected';
-
-function isPuterConnected() {
-  return localStorage.getItem(PUTER_CONNECTED_KEY) === '1';
-}
+const KV_TIMEOUT = 2000;
 
 async function cloudTry(fn) {
-  if (!isPuterConnected()) return;
+  if (kvFailed) return;
   if (typeof puter === 'undefined' || !puter.kv) return;
   try {
     await Promise.race([
@@ -28,8 +23,7 @@ async function cloudTry(fn) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
     ]);
   } catch (e) {
-    // silently ignore — localStorage is the primary store
-    if (e.message !== 'timeout') console.debug('Puter KV:', e.message);
+    if (e.message === 'timeout') kvFailed = true;
   }
 }
 
@@ -48,6 +42,31 @@ async function init() {
     });
 
     ready = true;
+
+    if (typeof puter !== 'undefined' && puter.kv && !kvFailed) {
+      try {
+        const result = await Promise.race([
+          puter.kv.get(DOCS_INDEX_KEY),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+        ]);
+        if (result && Array.isArray(result)) {
+          cache.index = result;
+          cache.currentDocId = await Promise.race([
+            puter.kv.get(CURRENT_DOC_KEY),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+          ]) || cache.currentDocId;
+          for (const doc of cache.index) {
+            const content = await Promise.race([
+              puter.kv.get(PREFIX + 'content_' + doc.id),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), KV_TIMEOUT)),
+            ]);
+            if (content) cache.contents[doc.id] = content;
+          }
+        }
+      } catch {
+        kvFailed = true;
+      }
+    }
   })();
 
   return initPromise;
